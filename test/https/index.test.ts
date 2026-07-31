@@ -36,7 +36,6 @@ describe("createHTTPSProxy", () => {
     const proxy = createHTTPSProxy(credentials);
 
     const responsePromise = proxy.fetch("http://example.com/");
-    await new Promise((resolve) => setTimeout(resolve));
     const lines = await serveHttp(connects[0].pair);
     const response = await responsePromise;
 
@@ -59,14 +58,12 @@ describe("createHTTPSProxy", () => {
     const connects = recordConnects();
     const proxy = createHTTPSProxy(credentials);
 
-    const socketPromise = proxy.connect("db.example.com:5432");
-    await new Promise((resolve) => setTimeout(resolve));
+    proxy.connect("db.example.com:5432");
     const pair = connects[0].pair;
     const reader = new BufferedStreamReader(pair.server.readable);
     const writer = pair.server.writable.getWriter();
     const connectLines = await readHeadLines(reader);
     await writer.write(text("HTTP/1.1 200 OK\r\n\r\n"));
-    await socketPromise;
 
     expect(connects[0].options?.secureTransport).toBe("on");
     expect(connectLines[0]).toBe("CONNECT db.example.com:5432 HTTP/1.1");
@@ -76,12 +73,12 @@ describe("createHTTPSProxy", () => {
     const connects = recordConnects();
     const proxy = createHTTPSProxy(credentials);
 
-    await expect(
-      proxy.connect("db.example.com:5432", {
-        secureTransport: "on",
-        allowHalfOpen: false,
-      })
-    ).rejects.toThrow(/nested TLS|not supported/);
+    const socket = proxy.connect("db.example.com:5432", {
+      secureTransport: "on",
+      allowHalfOpen: false,
+    });
+
+    await expect(socket.opened).rejects.toThrow(/nested TLS|not supported/);
     expect(connects).toHaveLength(0);
   });
 });

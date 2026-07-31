@@ -76,7 +76,6 @@ describe("createSOCKS5Proxy", () => {
     const proxy = createSOCKS5Proxy(credentials);
 
     const responsePromise = proxy.fetch("http://example.com/path");
-    await new Promise((resolve) => setTimeout(resolve));
     const { requestLines, target } = await serveHttpOverSocks5(
       connects[0].pair
     );
@@ -97,7 +96,6 @@ describe("createSOCKS5Proxy", () => {
     const proxy = createSOCKS5Proxy(credentials);
 
     const responsePromise = proxy.fetch("https://example.com/");
-    await new Promise((resolve) => setTimeout(resolve));
     const { target } = await serveHttpOverSocks5(connects[0].pair);
     const response = await responsePromise;
 
@@ -113,10 +111,8 @@ describe("createSOCKS5Proxy", () => {
     const connects = recordConnects();
     const proxy = createSOCKS5Proxy(credentials);
 
-    const socketPromise = proxy.connect("db.example.com:5432");
-    await new Promise((resolve) => setTimeout(resolve));
+    const socket = proxy.connect("db.example.com:5432");
     const session = await acceptSocks5(connects[0].pair);
-    const socket = await socketPromise;
 
     expect(session.target).toEqual({
       hostname: "db.example.com",
@@ -137,7 +133,6 @@ describe("createSOCKS5Proxy", () => {
     const proxy = createSOCKS5Proxy(credentials);
 
     const responsePromise = proxy.fetch("http://example.com/");
-    await new Promise((resolve) => setTimeout(resolve));
     const pair = connects[0].pair;
     const reader = new BufferedStreamReader(pair.server.readable);
     await reader.readExact(2);

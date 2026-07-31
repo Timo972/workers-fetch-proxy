@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { OpenTunnel } from "../../src/proxy/fetcher";
 import { createProxyFetcher } from "../../src/proxy/fetcher";
+import type { OpenTunnel } from "../../src/proxy/tunnel";
 import { ProxyError } from "../../src/shared/error";
 import type { TunnelTarget } from "../../src/shared/target";
 import { bytes, readAll, text } from "../utils/bytes";
@@ -10,20 +10,23 @@ import { serveHttp } from "../utils/http";
 
 interface TunnelCall {
   target: TunnelTarget;
-  secureTransport: "off" | "starttls";
+  upgradeable: boolean;
 }
 
-function stubTunnel(options?: { leftover?: Uint8Array; tls?: boolean }): {
+function stubTunnel(options?: { leftover?: Uint8Array; fail?: Error }): {
   openTunnel: OpenTunnel;
   calls: TunnelCall[];
   pair: () => FakeSocketPair;
 } {
   const calls: TunnelCall[] = [];
   let pair: FakeSocketPair | undefined;
-  const openTunnel: OpenTunnel = (target, tunnelOptions) => {
-    calls.push({ target, secureTransport: tunnelOptions.secureTransport });
+  const openTunnel: OpenTunnel = (target, { upgradeable }) => {
+    calls.push({ target, upgradeable });
+    if (options?.fail) {
+      return Promise.reject(options.fail);
+    }
     pair = createFakeSocketPair({
-      secureTransport: tunnelOptions.secureTransport,
+      secureTransport: upgradeable ? "starttls" : "off",
       allowHalfOpen: false,
     });
     return Promise.resolve({
@@ -51,21 +54,23 @@ describe("createProxyFetcher fetch", () => {
     );
   });
 
+  it("rejects a malformed request URL", async () => {
+    const { openTunnel } = stubTunnel();
+    const fetcher = createProxyFetcher(openTunnel);
+
+    await expect(fetcher.fetch("not a url")).rejects.toThrow();
+  });
+
   it("tunnels plain http requests without TLS", async () => {
     const { openTunnel, calls, pair } = stubTunnel();
     const fetcher = createProxyFetcher(openTunnel);
 
     const responsePromise = fetcher.fetch("http://example.com/data?x=1");
-    // Wait for the tunnel to open before scripting the server side.
-    await new Promise((resolve) => setTimeout(resolve));
     const lines = await serveHttp(pair());
     const response = await responsePromise;
 
     expect(calls).toEqual([
-      {
-        target: { hostname: "example.com", port: 80 },
-        secureTransport: "off",
-      },
+      { target: { hostname: "example.com", port: 80 }, upgradeable: false },
     ]);
     expect(lines[0]).toBe("GET /data?x=1 HTTP/1.1");
     expect(pair().tlsCalls).toHaveLength(0);
@@ -77,7 +82,6 @@ describe("createProxyFetcher fetch", () => {
     const fetcher = createProxyFetcher(openTunnel);
 
     const responsePromise = fetcher.fetch("http://example.com:8080/");
-    await new Promise((resolve) => setTimeout(resolve));
     await serveHttp(pair());
     await responsePromise;
 
@@ -89,15 +93,11 @@ describe("createProxyFetcher fetch", () => {
     const fetcher = createProxyFetcher(openTunnel);
 
     const responsePromise = fetcher.fetch("https://example.com/secure");
-    await new Promise((resolve) => setTimeout(resolve));
     const lines = await serveHttp(pair());
     const response = await responsePromise;
 
     expect(calls).toEqual([
-      {
-        target: { hostname: "example.com", port: 443 },
-        secureTransport: "starttls",
-      },
+      { target: { hostname: "example.com", port: 443 }, upgradeable: true },
     ]);
     expect(pair().tlsCalls).toEqual([
       { options: { expectedServerHostname: "example.com" } },
@@ -107,13 +107,21 @@ describe("createProxyFetcher fetch", () => {
   });
 
   it("fails https requests when data arrived before the TLS upgrade", async () => {
-    const { openTunnel, pair } = stubTunnel({ leftover: text("early") });
+    const { openTunnel } = stubTunnel({ leftover: text("early") });
     const fetcher = createProxyFetcher(openTunnel);
 
     await expect(fetcher.fetch("https://example.com/")).rejects.toThrow(
       ProxyError
     );
-    expect(pair().closed()).toBe(true);
+  });
+
+  it("rejects when the tunnel handshake fails", async () => {
+    const { openTunnel } = stubTunnel({ fail: new ProxyError("refused") });
+    const fetcher = createProxyFetcher(openTunnel);
+
+    await expect(fetcher.fetch("http://example.com/")).rejects.toThrow(
+      /refused/
+    );
   });
 
   it("uses the plain-http override when provided", async () => {
@@ -142,7 +150,6 @@ describe("createProxyFetcher fetch", () => {
     });
 
     const responsePromise = fetcher.fetch("https://example.com/");
-    await new Promise((resolve) => setTimeout(resolve));
     await serveHttp(pair());
     await responsePromise;
 
@@ -151,13 +158,22 @@ describe("createProxyFetcher fetch", () => {
 });
 
 describe("createProxyFetcher connect", () => {
+  it("returns a Socket synchronously", () => {
+    const { openTunnel } = stubTunnel();
+    const socket = createProxyFetcher(openTunnel).connect("example.com:80");
+
+    expect(typeof socket.readable).toBe("object");
+    expect(typeof socket.close).toBe("function");
+  });
+
   it("opens a plain tunnel and replays leftover bytes", async () => {
     const { openTunnel, calls, pair } = stubTunnel({
       leftover: text("hello "),
     });
-    const fetcher = createProxyFetcher(openTunnel);
+    const socket = createProxyFetcher(openTunnel).connect(
+      "db.example.com:5432"
+    );
 
-    const socket = await fetcher.connect("db.example.com:5432");
     const writer = pair().server.writable.getWriter();
     await writer.write(text("world"));
     await writer.close();
@@ -165,33 +181,34 @@ describe("createProxyFetcher connect", () => {
     expect(calls).toEqual([
       {
         target: { hostname: "db.example.com", port: 5432 },
-        secureTransport: "off",
+        upgradeable: false,
       },
     ]);
     expect(await readAll(socket.readable)).toEqual(text("hello world"));
   });
 
-  it("accepts SocketAddress objects", async () => {
+  it("accepts SocketAddress objects", () => {
     const { openTunnel, calls } = stubTunnel();
-    const fetcher = createProxyFetcher(openTunnel);
 
-    await fetcher.connect({ hostname: "example.com", port: 80 });
-
-    expect(calls[0].target).toEqual({
+    createProxyFetcher(openTunnel).connect({
       hostname: "example.com",
       port: 80,
     });
+
+    expect(calls[0].target).toEqual({ hostname: "example.com", port: 80 });
   });
 
   it("starts TLS immediately for secureTransport 'on'", async () => {
-    const { openTunnel, pair } = stubTunnel();
-    const fetcher = createProxyFetcher(openTunnel);
-
-    await fetcher.connect("[2001:db8::1]:443", {
+    const { openTunnel, calls, pair } = stubTunnel();
+    const socket = createProxyFetcher(openTunnel).connect("[2001:db8::1]:443", {
       secureTransport: "on",
       allowHalfOpen: false,
     });
 
+    await socket.opened;
+
+    expect(calls[0].upgradeable).toBe(true);
+    expect(socket.secureTransport).toBe("on");
     expect(pair().tlsCalls).toEqual([
       { options: { expectedServerHostname: "2001:db8::1" } },
     ]);
@@ -199,29 +216,24 @@ describe("createProxyFetcher connect", () => {
 
   it("leaves the TLS upgrade to the caller for 'starttls'", async () => {
     const { openTunnel, calls, pair } = stubTunnel();
-    const fetcher = createProxyFetcher(openTunnel);
-
-    const socket = await fetcher.connect("example.com:5432", {
+    const socket = createProxyFetcher(openTunnel).connect("example.com:5432", {
       secureTransport: "starttls",
       allowHalfOpen: false,
     });
 
-    expect(calls[0].secureTransport).toBe("starttls");
+    await socket.opened;
+    expect(calls[0].upgradeable).toBe(true);
     expect(pair().tlsCalls).toHaveLength(0);
-    socket.startTls();
+
+    const tls = socket.startTls();
+    await tls.opened;
     expect(pair().tlsCalls).toHaveLength(1);
   });
 
-  it("fails 'on' upgrades when data arrived before TLS", async () => {
-    const { openTunnel, pair } = stubTunnel({ leftover: text("early") });
-    const fetcher = createProxyFetcher(openTunnel);
+  it("surfaces a handshake failure on opened", async () => {
+    const { openTunnel } = stubTunnel({ fail: new ProxyError("refused") });
+    const socket = createProxyFetcher(openTunnel).connect("example.com:80");
 
-    await expect(
-      fetcher.connect("example.com:443", {
-        secureTransport: "on",
-        allowHalfOpen: false,
-      })
-    ).rejects.toThrow(ProxyError);
-    expect(pair().closed()).toBe(true);
+    await expect(socket.opened).rejects.toThrow(/refused/);
   });
 });

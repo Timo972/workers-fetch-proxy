@@ -2,7 +2,29 @@ import { connect } from "cloudflare:sockets";
 import type { Credentials } from "../shared/credentials";
 import { ProxyError } from "../shared/error";
 import type { TunnelStreams, TunnelTarget } from "../shared/target";
-import type { OpenTunnel } from "./fetcher";
+
+/** An established tunnel plus bytes the handshake over-read. */
+export interface Tunnel {
+  socket: Socket;
+  leftover: Uint8Array;
+}
+
+export interface OpenTunnelOptions {
+  /**
+   * Whether the caller intends to upgrade the tunnel to TLS afterwards. The
+   * proxy socket must then be opened with `starttls` so it can be upgraded.
+   */
+  upgradeable: boolean;
+}
+
+/**
+ * Protocol-specific part of a proxy: opens a socket to the proxy server and
+ * performs the handshake that turns it into a tunnel to `target`.
+ */
+export type OpenTunnel = (
+  target: TunnelTarget,
+  options: OpenTunnelOptions
+) => Promise<Tunnel>;
 
 /** A protocol's handshake that turns a proxy socket into a tunnel. */
 export type Handshake = (
@@ -28,8 +50,8 @@ export function tunnelOpener(
   handshake: Handshake,
   options: TunnelOpenerOptions = {}
 ): OpenTunnel {
-  return async (target, { secureTransport }) => {
-    if (options.proxyTls && secureTransport !== "off") {
+  return async (target, { upgradeable }) => {
+    if (options.proxyTls && upgradeable) {
       throw new ProxyError(
         "cannot open a TLS tunnel through an HTTPS proxy: Workers sockets do not support nested TLS"
       );
@@ -37,7 +59,7 @@ export function tunnelOpener(
     const socket = connect(
       { hostname: credentials.host, port: credentials.port },
       {
-        secureTransport: options.proxyTls ? "on" : secureTransport,
+        secureTransport: proxySecureTransport(options.proxyTls, upgradeable),
         allowHalfOpen: false,
       }
     );
@@ -48,4 +70,15 @@ export function tunnelOpener(
       throw error;
     }
   };
+}
+
+/** How the socket to the proxy server itself must be opened. */
+function proxySecureTransport(
+  proxyTls: boolean | undefined,
+  upgradeable: boolean
+): "on" | "starttls" | "off" {
+  if (proxyTls) {
+    return "on";
+  }
+  return upgradeable ? "starttls" : "off";
 }

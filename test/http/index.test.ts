@@ -57,7 +57,6 @@ describe("createHTTPProxy", () => {
     const proxy = createHTTPProxy(credentials);
 
     const responsePromise = proxy.fetch("http://example.com/data");
-    await new Promise((resolve) => setTimeout(resolve));
     const lines = await serveHttp(connects[0].pair);
     const response = await responsePromise;
 
@@ -76,7 +75,6 @@ describe("createHTTPProxy", () => {
     const proxy = createHTTPProxy(credentials);
 
     const responsePromise = proxy.fetch("https://example.com/secure");
-    await new Promise((resolve) => setTimeout(resolve));
     const { connectLines, requestLines } = await serveConnectThenHttp(
       connects[0].pair
     );
@@ -96,17 +94,12 @@ describe("createHTTPProxy", () => {
     const connects = recordConnects();
     const proxy = createHTTPProxy(credentials);
 
-    const socketPromise = proxy.connect({
-      hostname: "db.example.com",
-      port: 5432,
-    });
-    await new Promise((resolve) => setTimeout(resolve));
+    proxy.connect({ hostname: "db.example.com", port: 5432 });
     const pair = connects[0].pair;
     const reader = new BufferedStreamReader(pair.server.readable);
     const writer = pair.server.writable.getWriter();
     const connectLines = await readHeadLines(reader);
     await writer.write(text("HTTP/1.1 200 OK\r\n\r\n"));
-    await socketPromise;
 
     expect(connectLines[0]).toBe("CONNECT db.example.com:5432 HTTP/1.1");
   });
