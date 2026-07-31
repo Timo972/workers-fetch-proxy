@@ -1,4 +1,4 @@
-import { createSOCKS5Proxy } from "cloudflare-workers-proxies";
+import { createSOCKS5Proxy } from "workers-fetch-proxy";
 
 interface Env {
   PROXY_HOST: string;
