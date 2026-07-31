@@ -6,14 +6,32 @@
     "license": "MIT",
     "sideEffects": false,
     "type": "module",
-    "exports": "./dist/index.mjs",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.mts",
+            "import": "./dist/index.mjs"
+        },
+        "./socks5": {
+            "types": "./dist/socks5/index.d.mts",
+            "import": "./dist/socks5/index.mjs"
+        },
+        "./http": {
+            "types": "./dist/http/index.d.mts",
+            "import": "./dist/http/index.mjs"
+        },
+        "./https": {
+            "types": "./dist/https/index.d.mts",
+            "import": "./dist/https/index.mjs"
+        },
+        "./package.json": "./package.json"
+    },
     "main": "./dist/index.mjs",
     "types": "./dist/index.d.mts",
     "files": [
         "dist"
     ],
     "scripts": {
-        "build": "obuild src/index.ts",
+        "build": "obuild",
         "dev": "vitest",
         "lint": "eslint . && prettier -c src test examples",
         "lint:fix": "eslint --fix . && prettier -w src test examples",
