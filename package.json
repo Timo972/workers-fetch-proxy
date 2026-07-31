@@ -1,8 +1,8 @@
 {
-    "name": "cloudflare-workers-proxies",
+    "name": "workers-fetch-proxy",
     "version": "1.0.0-alpha.1",
     "description": "Use HTTP, HTTPS & SOCKS5 proxies in workers fetch()",
-    "repository": "timo972/cloudflare-workers-http-proxy",
+    "repository": "timo972/workers-fetch-proxy",
     "license": "MIT",
     "sideEffects": false,
     "type": "module",
