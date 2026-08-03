@@ -2,7 +2,10 @@
     "name": "workers-fetch-proxy",
     "version": "1.0.0-alpha.1",
     "description": "Use HTTP, HTTPS & SOCKS5 proxies in workers fetch()",
-    "repository": "timo972/workers-fetch-proxy",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/timo972/workers-fetch-proxy.git"
+    },
     "license": "MIT",
     "sideEffects": false,
     "type": "module",
