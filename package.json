@@ -1,6 +1,6 @@
 {
     "name": "workers-fetch-proxy",
-    "version": "1.0.0-rc.0",
+    "version": "1.0.0",
     "description": "Use HTTP, HTTPS & SOCKS5 proxies in workers fetch()",
     "repository": {
         "type": "git",
