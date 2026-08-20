@@ -9,13 +9,11 @@ on:
 # No untrusted input used in run steps — safe from injection
 jobs:
   build:
-    name: Build & Test (${{ matrix.os }}, Node ${{ matrix.node }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ['22', '24', '26']
+    name: Build & Test
+    # No OS/Node matrix: the package only runs in workerd (Cloudflare Workers),
+    # so tests exercise a cloudflare:sockets mock — the host platform and Node
+    # version add no coverage. One Linux runner on current LTS is enough.
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v7
@@ -24,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node }}
+          node-version: '24'
           cache: pnpm
 
       - name: Install dependencies
