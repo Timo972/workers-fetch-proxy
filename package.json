@@ -4,7 +4,7 @@
     "description": "Use HTTP, HTTPS & SOCKS5 proxies in workers fetch()",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/timo972/workers-fetch-proxy.git"
+        "url": "git+https://github.com/Timo972/workers-fetch-proxy.git"
     },
     "license": "MIT",
     "sideEffects": false,
