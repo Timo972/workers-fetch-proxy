@@ -1,6 +1,6 @@
 {
     "name": "workers-fetch-proxy",
-    "version": "1.0.0-alpha.1",
+    "version": "1.0.0-rc.0",
     "description": "Use HTTP, HTTPS & SOCKS5 proxies in workers fetch()",
     "repository": {
         "type": "git",
@@ -39,7 +39,7 @@
         "lint": "eslint . && prettier -c src test examples",
         "lint:fix": "eslint --fix . && prettier -w src test examples",
         "prepack": "pnpm build",
-        "release": "pnpm test && pnpm build && changelogen --release --prerelease --publish --publishTag alpha --push",
+        "release": "pnpm test && pnpm build && changelogen --release --prerelease --push",
         "test": "pnpm lint && vitest run --coverage"
     },
     "devDependencies": {
