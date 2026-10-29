@@ -12,6 +12,7 @@ export default defineBuildConfig({
         "./src/socks5/index.ts",
         "./src/http/index.ts",
         "./src/https/index.ts",
+        "./src/subtls/index.ts",
       ],
     },
   ],

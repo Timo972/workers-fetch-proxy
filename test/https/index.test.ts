@@ -54,6 +54,34 @@ describe("createHTTPSProxy", () => {
     expect(connects).toHaveLength(0);
   });
 
+  it("fetches https URLs through the tunnel when user-space TLS is configured", async () => {
+    const connects = recordConnects();
+    const upgrades: string[] = [];
+    const proxy = createHTTPSProxy(credentials, {
+      tls: (socket, serverName) => {
+        upgrades.push(serverName);
+        return socket;
+      },
+    });
+
+    const responsePromise = proxy.fetch("https://example.com/secure");
+    const pair = connects[0].pair;
+    const reader = new BufferedStreamReader(pair.server.readable);
+    const writer = pair.server.writable.getWriter();
+    const connectLines = await readHeadLines(reader);
+    await writer.write(text("HTTP/1.1 200 Connection established\r\n\r\n"));
+    const requestLines = await readHeadLines(reader);
+    await writer.write(text("HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok"));
+    const response = await responsePromise;
+
+    // TLS to the proxy itself stays native; the inner session is user-space.
+    expect(connects[0].options?.secureTransport).toBe("on");
+    expect(connectLines[0]).toBe("CONNECT example.com:443 HTTP/1.1");
+    expect(upgrades).toEqual(["example.com"]);
+    expect(requestLines[0]).toBe("GET /secure HTTP/1.1");
+    expect(await response.text()).toBe("ok");
+  });
+
   it("opens raw tunnels with connect()", async () => {
     const connects = recordConnects();
     const proxy = createHTTPSProxy(credentials);

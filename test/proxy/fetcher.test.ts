@@ -106,6 +106,30 @@ describe("createProxyFetcher fetch", () => {
     expect(response.status).toBe(200);
   });
 
+  it("uses the tls option for https instead of startTls", async () => {
+    const { openTunnel, calls, pair } = stubTunnel();
+    const upgrades: string[] = [];
+    // A pass-through "TLS" layer, enough to see the routing.
+    const fetcher = createProxyFetcher(openTunnel, {
+      tls: (socket, serverName) => {
+        upgrades.push(serverName);
+        return socket;
+      },
+    });
+
+    const responsePromise = fetcher.fetch("https://example.com/secure");
+    const lines = await serveHttp(pair());
+    const response = await responsePromise;
+
+    expect(calls).toEqual([
+      { target: { hostname: "example.com", port: 443 }, upgradeable: false },
+    ]);
+    expect(upgrades).toEqual(["example.com"]);
+    expect(pair().tlsCalls).toHaveLength(0);
+    expect(lines[0]).toBe("GET /secure HTTP/1.1");
+    expect(response.status).toBe(200);
+  });
+
   it("fails https requests when data arrived before the TLS upgrade", async () => {
     const { openTunnel } = stubTunnel({ leftover: text("early") });
     const fetcher = createProxyFetcher(openTunnel);
