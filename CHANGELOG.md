@@ -1,6 +1,18 @@
 # Changelog
 
 
+## v1.1.0
+
+[compare changes](https://github.com/Timo972/workers-fetch-proxy/compare/v1.0.0...v1.1.0)
+
+### 🚀 Enhancements
+
+- User-space TLS via subtls ([3b00838](https://github.com/Timo972/workers-fetch-proxy/commit/3b00838))
+
+### ❤️ Contributors
+
+- Timo ([@Timo972](https://github.com/Timo972))
+
 ## v1.0.0
 
 
