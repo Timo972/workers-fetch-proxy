@@ -88,6 +88,7 @@ Each protocol is also published as its own entry point, so you can import just t
 import { createSOCKS5Proxy } from "workers-fetch-proxy/socks5";
 import { createHTTPProxy } from "workers-fetch-proxy/http";
 import { createHTTPSProxy } from "workers-fetch-proxy/https";
+import { subtls } from "workers-fetch-proxy/subtls";
 ```
 
 The package is `sideEffects: false`, so importing a factory from the root entry already tree-shakes the other protocols away in any modern bundler (including Wrangler). The subpath entries are mainly for a smaller type surface and for build setups where tree-shaking is disabled — the shared core is emitted once and reused across all entries, so importing more than one protocol never duplicates it.
@@ -106,9 +107,35 @@ await writer.write(new TextEncoder().encode("ping"));
 
 Like the native `connect()`, it returns a `Socket` synchronously; the proxy handshake completes in the background, so the connection is established by the time the first bytes flow. A failed handshake surfaces on `socket.opened` and on the streams.
 
+### User-space TLS
+
+By default, `https:` targets are upgraded with the runtime's `startTls()`. Pass `tls` to do TLS in JavaScript instead, using [subtls](https://github.com/jawj/subtls):
+
+```ts
+import { createSOCKS5Proxy } from "workers-fetch-proxy";
+import { subtls } from "workers-fetch-proxy/subtls";
+
+const proxy = createSOCKS5Proxy(
+  { host: "proxy.example.com", port: 1080 },
+  // PEM root certificates to trust; each server chain must lead to one.
+  { tls: subtls({ rootCertificates: DIGICERT_GLOBAL_ROOT_G2_PEM }) }
+);
+
+await proxy.fetch("https://itunes.apple.com/search?term=apple");
+```
+
+Use this when:
+
+- **A server rejects the deployed Workers runtime's TLS handshake.** Some edges cut `startTls()` connections from Workers while accepting other clients; subtls sends a different ClientHello.
+- **You need `https:` targets through an HTTPS proxy.** The user-space session runs inside the proxy's TLS session, which `startTls()` cannot do.
+
+Only the root certificates you pass are trusted, so bring the roots for the hosts you call (for example from the [Mozilla CA bundle](https://curl.se/docs/caextract.html)). subtls supports TLS 1.3 only (`TLS_AES_128_GCM_SHA256`, P-256 key exchange), verifies by hostname (not IP addresses), and describes itself as not production-ready; review it against your threat model. `tls` applies to `https:` fetches and to `connect()` with `secureTransport: "on"`; `secureTransport: "starttls"` keeps using the runtime.
+
+To plug in a different TLS implementation, `tls` accepts any `(socket, serverName) => Socket`; `userspaceTlsSocket(socket, session)` turns a session with `read()` and `write()` into a `Socket`.
+
 ## Limitations
 
-- **`https:` targets through an HTTPS proxy are not supported.** That requires a TLS session inside the proxy's TLS session, and Workers sockets cannot nest TLS (`startTls()` only works once, on a plaintext socket). Use an HTTP or SOCKS5 proxy for `https:` targets, or an HTTPS proxy for `http:` targets.
+- **`https:` targets through an HTTPS proxy need the `tls` option.** Workers sockets cannot nest TLS (`startTls()` only works once, on a plaintext socket), so the inner session has to run in user space (see above). Without `tls`, use an HTTP or SOCKS5 proxy for `https:` targets.
 - Proxied `fetch()` speaks HTTP/1.1 with `Connection: close` — one TCP connection per request, no keep-alive or HTTP/2.
 - Redirects are returned as-is (like `redirect: "manual"`); they are not followed.
 - Request bodies are buffered to compute `Content-Length`; response bodies stream.

@@ -2,6 +2,7 @@ import { sendRequest } from "../http1/client";
 import { parseSocketAddress } from "../shared/address";
 import { stripBrackets } from "../shared/ip";
 import type { TunnelTarget } from "../shared/target";
+import type { TlsUpgrade } from "../tls/userspace-socket";
 import type { OpenTunnel } from "./tunnel";
 import { tunnelSocket } from "./tunnel-socket";
 
@@ -11,6 +12,11 @@ export interface ProxyFetcherOptions {
    * those as absolute-form requests instead of a tunnel.
    */
   fetchPlainHttp?: (request: Request) => Promise<Response>;
+  /**
+   * User-space TLS for `https:` fetches and `connect()` with
+   * `secureTransport: "on"`, instead of the runtime's `startTls()`.
+   */
+  tls?: TlsUpgrade;
 }
 
 /**
@@ -29,6 +35,12 @@ export function createProxyFetcher(
   ): Socket {
     const target = parseSocketAddress(address);
     const mode = socketOptions?.secureTransport ?? "off";
+    if (mode === "on" && options.tls) {
+      return options.tls(
+        tunnelSocket(openTunnel(target, { upgradeable: false }), "off"),
+        stripBrackets(target.hostname)
+      );
+    }
     const upgradeable = mode !== "off";
     const socket = tunnelSocket(
       openTunnel(target, { upgradeable }),
